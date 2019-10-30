@@ -5,6 +5,10 @@
 -- for other clients (in particular, cabal-install).
 {-# LANGUAGE FlexibleInstances    #-}
 {-# LANGUAGE GADTs                #-}
+{-# LANGUAGE StandaloneDeriving   #-}
+{-# LANGUAGE DeriveGeneric        #-}
+{-# LANGUAGE QuantifiedConstraints #-}
+{-# LANGUAGE UndecidableInstances #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 module Distribution.Server.Features.Security.Orphans where
 
@@ -13,7 +17,9 @@ import Control.DeepSeq
 import Data.SafeCopy
 import Data.Serialize
 import qualified Data.ByteString.Lazy as BS.L
+import Data.Typeable (Typeable)
 import qualified Crypto.Sign.Ed25519  as Ed25519
+import GHC.Generics (Generic)
 
 -- hackage
 import Distribution.Server.Framework.MemSize
@@ -28,8 +34,9 @@ import qualified Hackage.Security.Util.Pretty as Sec
   SafeCopy instances
 -------------------------------------------------------------------------------}
 
-instance SafeCopy (Some Sec.Key) where
-  -- use default Serialize instance
+instance (Typeable f, forall a. SafeCopy (f a)) => SafeCopy (Some f) where
+  putCopy (Some a) = putCopy a
+  getCopy = contain $ Some <$> safeGet
 
 instance Serialize (Some Sec.Key) where
   put = put . Sec.renderJSON_NoLayout
@@ -43,6 +50,8 @@ instance Serialize (Some Sec.Key) where
 instance SafeCopy Sec.FileVersion where
   -- use default Serialize instance
 
+deriving instance Generic Sec.FileVersion
+
 instance Serialize Sec.FileVersion where
   put (Sec.FileVersion v) = put v
   get = Sec.FileVersion `fmap` get
@@ -50,7 +59,8 @@ instance Serialize Sec.FileVersion where
 -- Before hackage-security moved to Int64, it was using Int, so in order to
 -- keep the Serialize instance the same, that's what we translate to here.
 instance SafeCopy Int54 where
-  -- use default Serialize instance
+  putCopy a = putCopy (fromIntegral a :: Int)
+  getCopy = contain $ fromIntegral <$> (safeGet :: Get Int)
 
 instance Serialize Int54 where
    put = put . (fromIntegral :: Int54 -> Int)

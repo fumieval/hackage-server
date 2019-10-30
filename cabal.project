@@ -7,6 +7,8 @@
 -- with-compiler: ghc-8.2.2
 
 packages: .
+  ../acid-state
+  ../cheapskate
 
 -----------------------------------------------------------------------------
 -- Anti-constraints
@@ -50,6 +52,28 @@ constraints: foundation -none, cryptonite -none, cryptohash -none
 --   location: https://github.com/hvr/cabal-parsers.git
 --   tag: 893d128f7680bedafb472c4bd45b12a87ade9166
 
+source-repository-package
+  type: git
+  location: git@github.com:acid-state/safecopy.git
+  tag: 1be0894daeefff5126b25c9483ce2bf21845d05b
+
+source-repository-package
+  type: git
+  location: https://github.com/Avi-D-coder/hackage-security.git
+  tag: 61e86a0d83552c3862e776c3a28a7effbe417b4f
+  subdir: hackage-security
+
+source-repository-package
+  type: git
+  location: https://github.com/tfausak/happstack-server
+  tag: 6c1e9ac91a18d297096dad873e57c85bec9f0676
+
+allow-newer:
+  rss:*
+  happstack-server:template-haskell
+  haddock-library:base
+  hackage-security:base
+  hackage-security-HTTP:network
 
 package hackage-server
 --   tests: True

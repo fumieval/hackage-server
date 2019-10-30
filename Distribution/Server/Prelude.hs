@@ -8,7 +8,7 @@
 module Distribution.Server.Prelude
     ( module X
     , parseTimeMaybe
-    , readPTime'
+    , parseUTCTime
     , sortOn
     , isLeft
     ) where
@@ -21,6 +21,7 @@ import           Data.Maybe          as X
 import           Data.Ord            as X (comparing)
 import           Data.Semigroup      as X
 import           Data.Typeable       as X (Typeable)
+import           Data.Time (UTCTime)
 import           Data.Word           as X
 import           Prelude             as X
 import           Control.Monad.IO.Class as X (MonadIO(liftIO))
@@ -36,13 +37,8 @@ import           Data.Either (isLeft)
 -- TODO: move somewhere else
 import Data.Time.Locale.Compat (defaultTimeLocale)
 -- import Text.ParserCombinators.ReadP (ReadP)
-import Distribution.Compat.ReadP as ReadP
-#if MIN_VERSION_time(1,5,0)
-import Data.Time.Format (ParseTime, parseTimeM, readSTime)
-#else
-import Data.Time.Format (ParseTime, parseTime, readsTime)
-#endif
-
+import Distribution.Parsec
+import Data.Time.Format (ParseTime, parseTimeM)
 parseTimeMaybe :: ParseTime t => String -> String -> Maybe t
 #if MIN_VERSION_time(1,5,0)
 parseTimeMaybe = parseTimeM True defaultTimeLocale
@@ -50,12 +46,16 @@ parseTimeMaybe = parseTimeM True defaultTimeLocale
 parseTimeMaybe = parseTime defaultTimeLocale
 #endif
 
-readPTime' :: ParseTime t => String -> ReadP.ReadP r t
-#if MIN_VERSION_time(1,5,0)
-readPTime' fmt = ReadP.readS_to_P (readSTime True defaultTimeLocale fmt)
-#else
-readPTime' fmt = ReadP.readS_to_P (readsTime defaultTimeLocale fmt)
-#endif
+-- This looks dumb, but is there a better way to implement this? @fumieval
+parseUTCTime :: CabalParsing m => m UTCTime
+parseUTCTime = do
+  doW <- parsecToken
+  moY <- parsecToken
+  doM <- parsecToken
+  hms <- parsecToken
+  zone <- parsecToken
+  year <- parsecToken
+  parseTimeM True defaultTimeLocale "%c" $ unwords [doW, moY, doM, hms, zone, year]
 
 #if !MIN_VERSION_base(4,8,0)
 -- | See "Data.List" starting with @base-4.8.0.0@
@@ -69,4 +69,3 @@ isLeft :: Either a b -> Bool
 isLeft (Left  _) = True
 isLeft (Right _) = False
 #endif
-

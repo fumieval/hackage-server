@@ -1,5 +1,5 @@
 {-# LANGUAGE DeriveDataTypeable, StandaloneDeriving, FlexibleContexts, BangPatterns,
-             TypeFamilies #-}
+             TypeFamilies, LambdaCase #-}
 
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
@@ -20,14 +20,16 @@ import Distribution.Server.Prelude
 import Distribution.Text
 import Distribution.Server.Framework.MemSize
 
+import Distribution.Parsec
 import Distribution.Package  (PackageIdentifier(..))
+import Distribution.Pretty (Pretty)
 import Distribution.Compiler (CompilerFlavor(..), CompilerId(..))
 import Distribution.System   (OS(..), Arch(..))
 import Distribution.Types.GenericPackageDescription (FlagName, mkFlagName, unFlagName)
 import Distribution.Types.PackageName
 import Distribution.Version
 
-import Data.Time (Day(..), DiffTime, UTCTime(..))
+import Data.Time (Day(..), DiffTime, UTCTime(..), parseTimeM, defaultTimeLocale)
 import Control.DeepSeq
 
 import Data.Serialize as Serialize
@@ -41,7 +43,6 @@ import Happstack.Server
 import Data.List (stripPrefix)
 
 import qualified Text.PrettyPrint as PP (text)
-import Distribution.Compat.ReadP (readS_to_P)
 
 -- These types are not defined in this package, so we cannot easily control
 -- changing these instances when the types change. So it's not safe to derive
@@ -85,18 +86,18 @@ instance SafeCopy VersionRange where
     version = 2
     errorTypeName _ = "VersionRange"
     kind    = extension
-    putCopy = contain . foldVersionRange'
-                          (putWord8 0)
-                          (\v     -> putWord8 1 >> safePut v)
-                          (\v     -> putWord8 2 >> safePut v)
-                          (\v     -> putWord8 3 >> safePut v)
-                          (\v     -> putWord8 4 >> safePut v)
-                          (\v     -> putWord8 5 >> safePut v)
-                          (\v _   -> putWord8 6 >> safePut v)
-                          (\v _   -> putWord8 10 >> safePut v) -- since Cabal-2.0
-                          (\r1 r2 -> putWord8 7 >> r1 >> r2)
-                          (\r1 r2 -> putWord8 8 >> r1 >> r2)
-                          (\r     -> putWord8 9 >> r)
+    putCopy = contain . cataVersionRange (\case
+                          AnyVersionF -> putWord8 0
+                          ThisVersionF v -> putWord8 1 >> safePut v
+                          LaterVersionF v -> putWord8 2 >> safePut v
+                          EarlierVersionF v -> putWord8 3 >> safePut v
+                          OrLaterVersionF v -> putWord8 4 >> safePut v
+                          OrEarlierVersionF v -> putWord8 5 >> safePut v
+                          WildcardVersionF v -> putWord8 6 >> safePut v
+                          MajorBoundVersionF v -> putWord8 10 >> safePut v -- since Cabal-2.0
+                          UnionVersionRangesF r1 r2 -> putWord8 7 >> r1 >> r2
+                          IntersectVersionRangesF r1 r2 -> putWord8 8 >> r1 >> r2
+                          VersionRangeParensF r -> putWord8 9 >> r)
     getCopy = contain getVR
       where
         getVR = do
@@ -111,7 +112,7 @@ instance SafeCopy VersionRange where
             6 -> withinVersion    <$> safeGet
             7 -> unionVersionRanges     <$> getVR <*> getVR
             8 -> intersectVersionRanges <$> getVR <*> getVR
-            9 -> VersionRangeParens     <$> getVR
+            9 -> embedVersionRange . VersionRangeParensF     <$> getVR
             10 -> majorBoundVersion     <$> safeGet  -- since Cabal-2.0
             _ -> fail "VersionRange.getCopy: bad tag"
 
@@ -293,13 +294,11 @@ instance MemSize RsFlags where
 instance MemSize Length where
     memSize _ = memSize0
 
-instance Text Day where
-  disp  = PP.text . show
-  parse = readS_to_P (reads :: ReadS Day)
+instance Parsec Day where
+  parsec = parsecToken >>= parseTimeM True defaultTimeLocale "%m/%d/%y"
 
-instance Text UTCTime where
-  disp  = PP.text . show
-  parse = readS_to_P (reads :: ReadS UTCTime)
+instance Parsec UTCTime where
+  parsec = parseUTCTime
 
 -------------------
 -- Arbitrary instances
@@ -366,6 +365,8 @@ newtype PackageIdentifier_v0 = PackageIdentifier_v0 PackageIdentifier
 
 instance SafeCopy PackageIdentifier_v0 where
     errorTypeName _ = "PackageIdentifier_v0"
+    putCopy x = contain $ Serialize.put x
+    getCopy = contain Serialize.get
 
 instance Serialize PackageIdentifier_v0 where
     put (PackageIdentifier_v0 pkgid) = Serialize.put (show pkgid)
@@ -415,10 +416,10 @@ instance Migrate VersionRange where
     migrate (VersionRange_v0 v) = v
 
 
-textGet_v0 :: Text a => Serialize.Get a
+textGet_v0 :: Parsec a => Serialize.Get a
 textGet_v0 = (fromJust . simpleParse) <$> Serialize.get
 
-textPut_v0 :: Text a => a -> Serialize.Put
+textPut_v0 :: Pretty a => a -> Serialize.Put
 textPut_v0 = Serialize.put . display
 
 ---------------------------------------------------------------------

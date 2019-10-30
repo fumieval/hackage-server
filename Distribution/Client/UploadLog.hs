@@ -55,7 +55,7 @@ instance Text Entry where
         Disp.text (formatTime defaultTimeLocale "%c" time)
     <+> disp user <+> disp pkgid
   parse = do
-    time <- readPTime' "%c"
+    time <- parseUTCTime
     Parse.skipSpaces
     user <- parse
     Parse.skipSpaces
@@ -106,4 +106,3 @@ collectMaintainerInfo =
       where
         Entry _ _ pkgid = head entries
         maintainers     = nub [ uname | Entry _ uname _ <- entries ]
-

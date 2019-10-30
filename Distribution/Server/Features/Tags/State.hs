@@ -5,8 +5,8 @@ module Distribution.Server.Features.Tags.State where
 import Distribution.Server.Framework.Instances ()
 import Distribution.Server.Framework.MemSize
 
-import qualified Distribution.ParseUtils   as Parse
-import qualified Distribution.Compat.ReadP as Parse
+import Distribution.Compat.CharParsing as Parse
+import Distribution.Parsec   as Parse
 import Distribution.Text
 import Distribution.Package
 import qualified Text.PrettyPrint as Disp
@@ -27,22 +27,24 @@ import Control.Monad.Reader (ask, asks)
 import Control.DeepSeq
 
 newtype TagList = TagList [Tag] deriving (Show, Typeable)
-instance Text TagList where
-    disp (TagList tags) = Disp.hsep . Disp.punctuate Disp.comma $ map disp tags
-    parse = fmap TagList $ Parse.skipSpaces >> Parse.parseCommaList parse
+instance Parsec TagList where
+--    disp (TagList tags) = Disp.hsep . Disp.punctuate Disp.comma $ map disp tags
+    parsec = fmap TagList $ optional Parse.skipSpaces1 >> Parse.parsecCommaList parsec
 
 -- A tag is a string describing a package; presently the preferred word-separation
 -- character is the dash.
 newtype Tag = Tag String deriving (Show, Typeable, Ord, Eq, NFData, MemSize)
-instance Text Tag where
-    disp (Tag tag) = Disp.text tag
-    parse = do
+-- instance Text Tag where
+--     disp (Tag tag) = Disp.text tag
+
+instance Parsec Tag where
+    parsec = do
         -- adding 'many1 $ do' here would allow multiword tags.
         -- spaces aren't very aesthetic in URIs, though.
         strs <- do
             t <- liftM2 (:) (Parse.satisfy tagInitialChar)
                $ Parse.munch1 tagLaterChar
-            Parse.skipSpaces
+            optional Parse.skipSpaces1
             return t
         return $ Tag strs
 
@@ -275,5 +277,3 @@ $(makeAcidic ''PackageTags ['tagsForPackage
                          ,'lookupReviewTags
                          ,'clearReviewTags
                          ])
-
-

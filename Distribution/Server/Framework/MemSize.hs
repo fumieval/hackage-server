@@ -1,4 +1,5 @@
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE LambdaCase #-}
 module Distribution.Server.Framework.MemSize (
   MemSize(..),
   memSizeMb, memSizeKb,
@@ -31,7 +32,8 @@ import qualified Data.Version as Ver
 
 import Distribution.Package  (PackageIdentifier(..), PackageName, unPackageName)
 import Distribution.PackageDescription (FlagName, unFlagName)
-import Distribution.Version  (Version, VersionRange, foldVersionRange')
+import Distribution.Types.VersionRange (cataVersionRange, VersionRangeF(..))
+import Distribution.Version  (Version, VersionRange)
 import Distribution.System   (Arch(..), OS(..))
 import Distribution.Compiler (CompilerFlavor(..), CompilerId(..))
 
@@ -239,17 +241,18 @@ instance MemSize Version where
 
 instance MemSize VersionRange where
     memSize =
-      foldVersionRange' memSize0                  -- any
-                        memSize1                  -- == v
-                        memSize1                  -- > v
-                        memSize1                  -- < v
-                        (\v -> 7 + 2 * memSize v) -- >= v
-                        (\v -> 7 + 2 * memSize v) -- <= v
-                        (\v _v' -> memSize1 v)    -- == v.*
-                        (\v _v' -> memSize1 v)    -- ^>= v.*
-                        memSize2                  -- _ || _
-                        memSize2                  -- _ && _
-                        memSize1                  -- (_)
+      cataVersionRange $ \case
+        AnyVersionF -> memSize0                     -- any
+        ThisVersionF v -> memSize1 v                -- == v
+        LaterVersionF v -> memSize1 v               -- > v
+        EarlierVersionF v -> memSize1 v             -- < v
+        OrLaterVersionF v -> 7 + 2 * memSize v      -- >= v
+        OrEarlierVersionF v -> 7 + 2 * memSize v    -- <= v
+        WildcardVersionF v -> memSize1 v            -- == v.*
+        MajorBoundVersionF v -> memSize1 v          -- ^>= v.*
+        UnionVersionRangesF u v -> memSize2 u v     -- _ || _
+        IntersectVersionRangesF u v -> memSize2 u v -- _ && _
+        VersionRangeParensF v -> memSize1 v         -- (_)
 
 instance MemSize PackageIdentifier where
     memSize (PackageIdentifier a b) = memSize2 a b
